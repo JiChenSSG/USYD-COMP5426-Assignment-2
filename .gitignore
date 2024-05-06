@@ -61,3 +61,4 @@ gepp_omp_d
 .vscode/
 
 *.tar
+out
