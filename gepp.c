@@ -8,7 +8,6 @@
 void print_matrix(double** T, int rows, int cols);
 void gepp_basic(double** a, int n);
 void print_vector_matrix(double* T, int rows, int cols);
-inline double get(double* T, int n, int rows, int cols);
 
 int main(int argc, char* argv[]) {
     double** a;
@@ -86,7 +85,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (rank == 0) {
-        // print_matrix(a, n, n);
+        print_matrix(a, n, n);
         printf("Starting MPI computation...\n");
         gettimeofday(&start_time, 0);
     }
@@ -108,32 +107,32 @@ int main(int argc, char* argv[]) {
     MPI_Type_commit(&process_col_t);
 
     // align with group nums
-    int* sendcounts = (int*)malloc(GROUP_NUMS * numprocs * sizeof(int));
-    int* displs = (int*)malloc(GROUP_NUMS * numprocs * sizeof(int));
+    // int* sendcounts = (int*)malloc(GROUP_NUMS * numprocs * sizeof(int));
+    // int* displs = (int*)malloc(GROUP_NUMS * numprocs * sizeof(int));
 
     // initilize sendcounts and displs
-    for (i = 0; i < GROUP_NUMS * numprocs; i++) {
-        sendcounts[i] = 0;
-        displs[i] = 0;
-    }
+    // for (i = 0; i < GROUP_NUMS * numprocs; i++) {
+    //     sendcounts[i] = 0;
+    //     displs[i] = 0;
+    // }
 
-    int remainder = n % b;
-    for (i = 0; i < BLOCK_NUMS; i++) {
-        sendcounts[i] = b;
-    }
+    // for (i = 0; i < BLOCK_NUMS; i++) {
+    //     sendcounts[i] = b;
+    // }
 
-    if (remainder != 0) {
-        sendcounts[BLOCK_NUMS - 1] = remainder;
-    }
+    // if (n % b != 0) {
+    //     sendcounts[BLOCK_NUMS - 1] = n % b;
+    // }
 
-    int COL_NUMS = 0;
-    for (i = rank; i < BLOCK_NUMS; i += numprocs) {
-        COL_NUMS += sendcounts[i];
-    }
+    // calculate col number
+    // basic + remain_block + remain_non_block
+    int COL_NUMS = (GROUP_NUMS - (BLOCK_NUMS % numprocs != 0 || n % b != 0)) * b +
+                   ((BLOCK_NUMS - (n % b != 0)) % numprocs > rank ? b : 0) +
+                   ((BLOCK_NUMS - (n % b != 0)) % numprocs == rank ? n % b : 0);
 
-    for (i = 0; i < BLOCK_NUMS; i++) {
-        displs[i] = i * b;
-    }
+    // for (i = 0; i < BLOCK_NUMS; i++) {
+    //     displs[i] = i * b;
+    // }
 
     // double* process = (double*)malloc(n * GROUP_NUMS * b * sizeof(double));
 
@@ -144,7 +143,6 @@ int main(int argc, char* argv[]) {
         process[i] = process0 + i * GROUP_NUMS * b;
     }
 
-    // print
     // if (rank == 0) {
     // 	printf("sendcounts: ");
     // 	for (i = 0; i < GROUP_NUMS * numprocs; i++) {
@@ -160,54 +158,65 @@ int main(int argc, char* argv[]) {
     // }
 
     // spread data
+    // MPI_Request* request = (MPI_Request *)malloc((GROUP_NUMS + 1) * sizeof(MPI_Request));
+
     for (i = 0; i < GROUP_NUMS; i++) {
         MPI_Scatter(a[0] + i * b * numprocs, b, col_t, process[0] + i * b, b, process_col_t, 0, MPI_COMM_WORLD);
     }
 
     // for remains
-    if (i * b * numprocs < n) {
-        MPI_Scatterv(a[0] + i * b * numprocs, sendcounts + i * numprocs, displs + i * numprocs, col_t,
-                     process + i * b, b, process_col_t, 0, MPI_COMM_WORLD);
-    }
+    // if (i * b * numprocs < n) {
+    // 	printf("111\n");
+    //     MPI_Scatterv(a[0] + i * b * numprocs, sendcounts + i * numprocs, displs + i * numprocs, col_t, process + i *
+    //     b,
+    //                  b, process_col_t, 0, MPI_COMM_WORLD);
+    // }
 
-    // printf("rank: %d\n", rank);
-    // print_matrix(process, n, COL_NUMS);
+    // MPI_Waitall(GROUP_NUMS + 1, request, MPI_STATUSES_IGNORE);
 
-    int amax, idx, k, cur;
+    printf("original\n");
+    printf("rank: %d\n", rank);
+    print_matrix(process, n, COL_NUMS);
+
+    double amax, cur;
+    int idx, k;
     int END, BEGIN;
     double* c;
 
     // main gepp
-    // for (int ib = 0; ib < n - b; ib += b) {
-    //     END = ib + b;
-    //     BEGIN = ib;
-    //     if (ib % numprocs == rank) {
-    //         for (i = ib; i < END; i++) {
-    //             amax = get(process, ib, i - ib, n);
-    //             idx = ib;
-    //             for (k = ib + 1; k < n; k++) {
-    // 				cur = get(process, n, k, i - ib);
-    //                 if (fabs(cur) > fabs(amax)) {
-    //                     amax = cur;
-    //                     idx = k;
-    //                 }
-    //             }
+    for (int ib = 0; ib < n - b; ib += b) {
+        // find pivot row k
+        if ((ib / b) % numprocs == rank) {
+            END = ib + b;
+            BEGIN = ib;
+            for (i = ib; i < END; i++) {
+                amax = process[i][i - ib];
+                idx = ib;
+                for (k = i + 1; k < n; k++) {
+                    cur = process[k][i - ib];
+                    if (fabs(cur) > fabs(amax)) {
+                        amax = cur;
+                        idx = k;
+                    }
+                }
 
-    //             // exit with a warning that a is singular
-    //             if (amax == 0) {
-    //                 printf("matrix is singular!\n");
-    //                 exit(1);
-    //             } else if (idx != i) {
-    //                 // swap row i and row k
-    //                 for (j = 0; j < n; j++) {
-    //                     c = a[i][j];
-    //                     a[i][j] = a[indk][j];
-    //                     a[indk][j] = c;
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
+                // exit with a warning that a is singular
+                if (amax == 0) {
+                    printf("Rank %d: matrix is singular!\n", rank);
+                    exit(1);
+                } else if (idx != i) {
+                    // swap row i and row k
+                    c = process[i];
+                    process[i] = process[idx];
+                    process[idx] = c;
+                }
+            }
+        }
+    }
+
+    // printf("row swap\n");
+    // printf("rank: %d\n", rank);
+    // print_matrix(process, n, COL_NUMS);
 
     if (rank == 0) {
         gettimeofday(&end_time, 0);
@@ -299,5 +308,3 @@ void print_vector_matrix(double* T, int rows, int cols) {
     printf("\n\n");
     return;
 }
-
-double get(double* T, int n, int rows, int cols) { return T[n * cols + rows]; }
