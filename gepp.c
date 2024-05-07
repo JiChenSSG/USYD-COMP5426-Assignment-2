@@ -8,6 +8,7 @@
 void print_matrix(double** T, int rows, int cols);
 void gepp_basic(double** a, int n);
 void print_vector_matrix(double* T, int rows, int cols);
+inline double get(double*T, int n, int rows, int cols);
 
 int main(int argc, char* argv[]) {
     double** a;
@@ -159,8 +160,8 @@ int main(int argc, char* argv[]) {
 	}
 
 
-	// printf("rank: %d\n", rank);
-	// print_vector_matrix(process, COL_NUMS, n);
+	printf("rank: %d\n", rank);
+	print_vector_matrix(process, COL_NUMS, n);
 
 
     if (rank == 0) {
@@ -232,6 +233,8 @@ void gepp_basic(double** a, int n) {
     }
 }
 
+
+
 void print_matrix(double** T, int rows, int cols) {
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
@@ -252,4 +255,8 @@ void print_vector_matrix(double* T, int rows, int cols) {
 	}
 	printf("\n\n");
 	return;
+}
+
+double get(double* T, int n, int rows, int cols){
+	return T[n * rows + cols];
 }
