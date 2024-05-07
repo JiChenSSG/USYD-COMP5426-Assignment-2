@@ -62,3 +62,4 @@ gepp_omp_d
 
 *.tar
 out
+example*

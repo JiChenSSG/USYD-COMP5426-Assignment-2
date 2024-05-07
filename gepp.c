@@ -53,9 +53,13 @@ int main(int argc, char* argv[]) {
         a = (double**)malloc(n * sizeof(double*));
         a1 = (double**)malloc(n * sizeof(double*));
 
+		double *a0 = (double*)malloc(n * n * sizeof(double));
+		double *a10 = (double*)malloc(n * n * sizeof(double));
+
+
         for (i = 0; i < n; i++) {
-            a[i] = (double*)malloc(n * sizeof(double));
-            a1[i] = (double*)malloc(n * sizeof(double));
+            a[i] =	a0 + i * n;
+            a1[i] = a10 + i * n;
         }
         printf("Done!\n\n");
 
@@ -82,7 +86,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (rank == 0) {
-        print_matrix(a, n, n);
+        // print_matrix(a, n, n);
         printf("Starting MPI computation...\n");
         gettimeofday(&start_time, 0);
     }
@@ -90,24 +94,34 @@ int main(int argc, char* argv[]) {
     /**** MPI computation *****/
     MPI_Status status;
 
+    MPI_Datatype col_t_tmp;
     MPI_Datatype col_t;
-    MPI_Type_vector(n, 1, n, MPI_DOUBLE, &col_t);
-    MPI_Type_commit(&col_t);
+    MPI_Type_vector(n, 1, n, MPI_DOUBLE, &col_t_tmp);
+    MPI_Type_commit(&col_t_tmp);
+
+	MPI_Type_create_resized(col_t_tmp, 0, sizeof(double), &col_t);
 
     const int BLOCK_NUMS = n / b + (n % b == 0 ? 0 : 1);
+	const int GROUP_NUMS = BLOCK_NUMS / numprocs + (BLOCK_NUMS % numprocs == 0 ? 0 : 1);
 
-    int* sendcounts = (int*)malloc(BLOCK_NUMS * sizeof(int));
-    int* displs = (int*)malloc(BLOCK_NUMS * sizeof(int));
+	// align with group nums
+    int* sendcounts = (int*)malloc(GROUP_NUMS * numprocs * sizeof(int));
+    int* displs = (int*)malloc(GROUP_NUMS * numprocs * sizeof(int));
+
+	// initilize sendcounts and displs
+	for (i = 0; i < GROUP_NUMS * numprocs; i++) {
+		sendcounts[i] = 0;
+		displs[i] = 0;
+	}
 
     int remainder = n % b;
     for (i = 0; i < BLOCK_NUMS; i++) {
         sendcounts[i] = b;
-        if (remainder > 0) {
-            int add = (remainder >= b) ? b : remainder;
-            sendcounts[i] += add;
-            remainder -= add;
-        }
     }
+
+	if (remainder != 0) {
+		sendcounts[BLOCK_NUMS - 1] = remainder;
+	}
 
     int COL_NUMS = 0;
     for (i = rank; i < BLOCK_NUMS; i += numprocs) {
@@ -118,28 +132,35 @@ int main(int argc, char* argv[]) {
         displs[i] = i * b;
     }
 
-    double* process = (double*)malloc(n * COL_NUMS * sizeof(double));
+    double* process = (double*)malloc(n * GROUP_NUMS * b * sizeof(double));
 
-	double* send_buffer = (double*)malloc(n * n * sizeof(double));
+	// print
+	// if (rank == 0) {
+	// 	printf("sendcounts: ");
+	// 	for (i = 0; i < GROUP_NUMS * numprocs; i++) {
+	// 		printf("%d ", sendcounts[i]);
+	// 	}
+	// 	printf("\n");
 
-	if (rank == 0) {
-		for (i = 0; i < n; i++) {
-			for (j = 0; j < n; j++) {
-				send_buffer[i * n + j] = a[i][j];
-			}
-		}
+	// 	printf("displs: ");
+	// 	for (i = 0; i < GROUP_NUMS * numprocs; i++) {
+	// 		printf("%d ", displs[i]);
+	// 	}
+	// 	printf("\n");
+	// }
+
+	for (i = 0; i < GROUP_NUMS; i++) {
+		MPI_Scatter(a[0] + i * b * numprocs, b, col_t, process + i * b * n, b * n, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 	}
 
-    MPI_Scatterv(send_buffer, sendcounts, displs, col_t, process, b * n, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	// for remains
+	if(i * b * numprocs < n) {
+		MPI_Scatterv(a[0] + i * b * numprocs, sendcounts + i * numprocs, displs + i * numprocs, col_t, process + i * b * n, b * n, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	}
 
-	// if (rank == 0) {
-	// 	MPI_Send(send_buffer, 1, col_t, 1, 0, MPI_COMM_WORLD);
-	// 	MPI_Send(send_buffer + 1, 1, col_t, 1, 0, MPI_COMM_WORLD);
-	// } else if (rank == 1) {
-	// 	MPI_Recv(process, b * n, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
-	// 	MPI_Recv(process + n, b * n, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
-	// }
-	print_vector_matrix(process, COL_NUMS, n);
+
+	// printf("rank: %d\n", rank);
+	// print_vector_matrix(process, COL_NUMS, n);
 
 
     if (rank == 0) {
