@@ -8,7 +8,7 @@
 void print_matrix(double** T, int rows, int cols);
 void gepp_basic(double** a, int n);
 void print_vector_matrix(double* T, int rows, int cols);
-inline double get(double*T, int n, int rows, int cols);
+inline double get(double* T, int n, int rows, int cols);
 
 int main(int argc, char* argv[]) {
     double** a;
@@ -54,12 +54,11 @@ int main(int argc, char* argv[]) {
         a = (double**)malloc(n * sizeof(double*));
         a1 = (double**)malloc(n * sizeof(double*));
 
-		double *a0 = (double*)malloc(n * n * sizeof(double));
-		double *a10 = (double*)malloc(n * n * sizeof(double));
-
+        double* a0 = (double*)malloc(n * n * sizeof(double));
+        double* a10 = (double*)malloc(n * n * sizeof(double));
 
         for (i = 0; i < n; i++) {
-            a[i] =	a0 + i * n;
+            a[i] = a0 + i * n;
             a1[i] = a10 + i * n;
         }
         printf("Done!\n\n");
@@ -95,34 +94,37 @@ int main(int argc, char* argv[]) {
     /**** MPI computation *****/
     MPI_Status status;
 
-    MPI_Datatype col_t_tmp;
-    MPI_Datatype col_t;
-    MPI_Type_vector(n, 1, n, MPI_DOUBLE, &col_t_tmp);
-    MPI_Type_commit(&col_t_tmp);
-
-	MPI_Type_create_resized(col_t_tmp, 0, sizeof(double), &col_t);
-
     const int BLOCK_NUMS = n / b + (n % b == 0 ? 0 : 1);
-	const int GROUP_NUMS = BLOCK_NUMS / numprocs + (BLOCK_NUMS % numprocs == 0 ? 0 : 1);
+    const int GROUP_NUMS = BLOCK_NUMS / numprocs + (BLOCK_NUMS % numprocs == 0 ? 0 : 1);
 
-	// align with group nums
+    MPI_Datatype col_t;
+    MPI_Datatype process_col_t;
+    MPI_Type_vector(n, 1, n, MPI_DOUBLE, &col_t);
+    MPI_Type_vector(n, 1, GROUP_NUMS * b, MPI_DOUBLE, &process_col_t);
+
+    MPI_Type_create_resized(col_t, 0, sizeof(double), &col_t);
+    MPI_Type_create_resized(process_col_t, 0, sizeof(double), &process_col_t);
+    MPI_Type_commit(&col_t);
+    MPI_Type_commit(&process_col_t);
+
+    // align with group nums
     int* sendcounts = (int*)malloc(GROUP_NUMS * numprocs * sizeof(int));
     int* displs = (int*)malloc(GROUP_NUMS * numprocs * sizeof(int));
 
-	// initilize sendcounts and displs
-	for (i = 0; i < GROUP_NUMS * numprocs; i++) {
-		sendcounts[i] = 0;
-		displs[i] = 0;
-	}
+    // initilize sendcounts and displs
+    for (i = 0; i < GROUP_NUMS * numprocs; i++) {
+        sendcounts[i] = 0;
+        displs[i] = 0;
+    }
 
     int remainder = n % b;
     for (i = 0; i < BLOCK_NUMS; i++) {
         sendcounts[i] = b;
     }
 
-	if (remainder != 0) {
-		sendcounts[BLOCK_NUMS - 1] = remainder;
-	}
+    if (remainder != 0) {
+        sendcounts[BLOCK_NUMS - 1] = remainder;
+    }
 
     int COL_NUMS = 0;
     for (i = rank; i < BLOCK_NUMS; i += numprocs) {
@@ -133,36 +135,79 @@ int main(int argc, char* argv[]) {
         displs[i] = i * b;
     }
 
-    double* process = (double*)malloc(n * GROUP_NUMS * b * sizeof(double));
+    // double* process = (double*)malloc(n * GROUP_NUMS * b * sizeof(double));
 
-	// print
-	// if (rank == 0) {
-	// 	printf("sendcounts: ");
-	// 	for (i = 0; i < GROUP_NUMS * numprocs; i++) {
-	// 		printf("%d ", sendcounts[i]);
-	// 	}
-	// 	printf("\n");
+    double** process = malloc(n * sizeof(double*));
+    double* process0 = malloc(GROUP_NUMS * b * n * sizeof(double));
 
-	// 	printf("displs: ");
-	// 	for (i = 0; i < GROUP_NUMS * numprocs; i++) {
-	// 		printf("%d ", displs[i]);
-	// 	}
-	// 	printf("\n");
-	// }
+    for (i = 0; i < n; i++) {
+        process[i] = process0 + i * GROUP_NUMS * b;
+    }
 
-	for (i = 0; i < GROUP_NUMS; i++) {
-		MPI_Scatter(a[0] + i * b * numprocs, b, col_t, process + i * b * n, b * n, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-	}
+    // print
+    // if (rank == 0) {
+    // 	printf("sendcounts: ");
+    // 	for (i = 0; i < GROUP_NUMS * numprocs; i++) {
+    // 		printf("%d ", sendcounts[i]);
+    // 	}
+    // 	printf("\n");
 
-	// for remains
-	if(i * b * numprocs < n) {
-		MPI_Scatterv(a[0] + i * b * numprocs, sendcounts + i * numprocs, displs + i * numprocs, col_t, process + i * b * n, b * n, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-	}
+    // 	printf("displs: ");
+    // 	for (i = 0; i < GROUP_NUMS * numprocs; i++) {
+    // 		printf("%d ", displs[i]);
+    // 	}
+    // 	printf("\n");
+    // }
 
+    // spread data
+    for (i = 0; i < GROUP_NUMS; i++) {
+        MPI_Scatter(a[0] + i * b * numprocs, b, col_t, process[0] + i * b, b, process_col_t, 0, MPI_COMM_WORLD);
+    }
 
-	printf("rank: %d\n", rank);
-	print_vector_matrix(process, COL_NUMS, n);
+    // for remains
+    if (i * b * numprocs < n) {
+        MPI_Scatterv(a[0] + i * b * numprocs, sendcounts + i * numprocs, displs + i * numprocs, col_t,
+                     process + i * b, b, process_col_t, 0, MPI_COMM_WORLD);
+    }
 
+    // printf("rank: %d\n", rank);
+    // print_matrix(process, n, COL_NUMS);
+
+    int amax, idx, k, cur;
+    int END, BEGIN;
+    double* c;
+
+    // main gepp
+    // for (int ib = 0; ib < n - b; ib += b) {
+    //     END = ib + b;
+    //     BEGIN = ib;
+    //     if (ib % numprocs == rank) {
+    //         for (i = ib; i < END; i++) {
+    //             amax = get(process, ib, i - ib, n);
+    //             idx = ib;
+    //             for (k = ib + 1; k < n; k++) {
+    // 				cur = get(process, n, k, i - ib);
+    //                 if (fabs(cur) > fabs(amax)) {
+    //                     amax = cur;
+    //                     idx = k;
+    //                 }
+    //             }
+
+    //             // exit with a warning that a is singular
+    //             if (amax == 0) {
+    //                 printf("matrix is singular!\n");
+    //                 exit(1);
+    //             } else if (idx != i) {
+    //                 // swap row i and row k
+    //                 for (j = 0; j < n; j++) {
+    //                     c = a[i][j];
+    //                     a[i][j] = a[indk][j];
+    //                     a[indk][j] = c;
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
 
     if (rank == 0) {
         gettimeofday(&end_time, 0);
@@ -233,8 +278,6 @@ void gepp_basic(double** a, int n) {
     }
 }
 
-
-
 void print_matrix(double** T, int rows, int cols) {
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
@@ -247,16 +290,14 @@ void print_matrix(double** T, int rows, int cols) {
 }
 
 void print_vector_matrix(double* T, int rows, int cols) {
-	for (int i = 0; i < rows; i++) {
-		for (int j = 0; j < cols; j++) {
-			printf("%.2f\t", T[i * cols + j]);
-		}
-		printf("\n");
-	}
-	printf("\n\n");
-	return;
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            printf("%.2f\t", T[i * cols + j]);
+        }
+        printf("\n");
+    }
+    printf("\n\n");
+    return;
 }
 
-double get(double* T, int n, int rows, int cols){
-	return T[n * rows + cols];
-}
+double get(double* T, int n, int rows, int cols) { return T[n * cols + rows]; }
