@@ -191,21 +191,30 @@ int main(int argc, char* argv[]) {
     // printf("rank: %d\n", rank);
     // print_matrix(process, n, COL_NUMS);
 
-    double amax, cur, top;
+    double amax, cur, top, left;
     int idx, k, col;
-    int END, BEGIN;
+    int END, BEGIN, PROCESS_BEGIN, LL_RIGHT_BEGIN;
     double* c;
     int* change_sequence = (int*)malloc(b * sizeof(int));
+
+    double** LL_matrix = malloc(b * sizeof(double*));
+    double* LL0 = malloc(b * b * sizeof(double));
+
+    for (i = 0; i < b; i++) {
+        LL_matrix[i] = LL0 + i * b;
+    }
 
     // main gepp
     for (int ib = 0; ib < n; ib += b) {
         // find pivot row k
+        PROCESS_BEGIN = ib / b / numprocs * b;
+        END = (ib + b) > n ? n : (ib + b);
+        BEGIN = ib;
         if ((ib / b) % numprocs == rank) {
             // printf("rank: %d, ib: %d\n", rank, ib);
-            END = (ib + b) > n ? n : (ib + b);
-            BEGIN = ib;
+            // printf("rank: %d, ib: %d, BEGIN: %d, END: %d, PROCESS_BEGIN: %d\n", rank, ib, BEGIN, END, PROCESS_BEGIN);
             for (i = ib; i < END; i++) {
-                col = i - ib;
+                col = PROCESS_BEGIN + i - ib;
                 amax = process[i][col];
                 idx = i;
                 for (k = i + 1; k < n; k++) {
@@ -252,11 +261,11 @@ int main(int argc, char* argv[]) {
         MPI_Bcast(change_sequence, b, MPI_INT, (ib / b) % numprocs, MPI_COMM_WORLD);
 
         if ((ib / b) % numprocs != rank) {
-			// print sequence
-			for (i = 0; i < b; i++) {
-				printf("%d ", change_sequence[i]);
-			}
-			printf("\n");
+            // print sequence
+            // for (i = 0; i < b; i++) {
+            // 	printf("%d ", change_sequence[i]);
+            // }
+            // printf("\n");
             for (i = 0; i < b; i++) {
                 if (change_sequence[i] != -1) {
                     c = process[i + ib];
@@ -266,17 +275,71 @@ int main(int argc, char* argv[]) {
             }
         }
 
-		// barrier
-		// MPI_Barrier(MPI_COMM_WORLD);
+        // barrier
+        // MPI_Barrier(MPI_COMM_WORLD);
 
-		// boradcast LL
+        // printf("row swap\n");
+        // printf("rank: %d\n", rank);
+        // print_matrix(process, n, COL_NUMS);
+
+        // boradcast LL
+        int* disps_ll = (int*)malloc(b * sizeof(int));
+        int* blocklens_ll = (int*)malloc(b * sizeof(int));
+
+        for (i = 0; i < b; i++) {
+            blocklens_ll[i] = i + 1;
+            disps_ll[i] = b * i;
+        }
+
+        MPI_Datatype LL;
+        MPI_Type_indexed(b, blocklens_ll, disps_ll, MPI_DOUBLE, &LL);
+        MPI_Type_commit(&LL);
+
+        // fill LL_matrix
+        if ((ib / b) % numprocs == rank) {
+            for (i = 0; i < b; i++) {
+                for (j = 0; j <= i; j++) {
+                    LL_matrix[i][j] = process[PROCESS_BEGIN + i][j];
+                }
+            }
+            // printf("rank: %d\n", rank);
+            // print_matrix(LL_matrix, b, b);
+        }
+
+        MPI_Bcast(LL_matrix[0], 1, LL, (ib / b) % numprocs, MPI_COMM_WORLD);
+
+        // A(ib:end, end+1:n) = LL / A(ib:end, end+1:n)
+
+        // printf("rank: %d\n", rank);
+        // print_matrix(LL_matrix, b, b);
+
+        LL_RIGHT_BEGIN = PROCESS_BEGIN;
+        if ((ib / b) % numprocs >= rank) {
+            LL_RIGHT_BEGIN += b;
+        }
+
+		// printf("rank: %d, LL_RIGHT_BEGIN: %d\n", rank, LL_RIGHT_BEGIN);
+
+        for (i = 0; i < b; i++) {
+            for (j = ib + i + 1; j < END; j++) {
+                left = LL_matrix[j - ib][i];
+                // printf("rank: %d, i: %d, j - ib: %d, left: %lf\n", rank, i, j - ib, left);
+                for (k = LL_RIGHT_BEGIN; k < COL_NUMS; k++) {
+					// printf("rank: %d\n", rank);
+					// printf("i j k: %d %d %d\n", i, j, k);
+					// printf("process[j][k], left, process[ib + i][k]: %lf %lf %lf\n", process[j][k], left, process[ib + i][k]);
+                    process[j][k] -= left * process[ib + i][k];
+                }
+            }
+        }
+		
 		
     }
 
-    printf("row swap\n");
+    printf("LL Broadcast\n");
     printf("rank: %d\n", rank);
     print_matrix(process, n, COL_NUMS);
-
+	
     if (rank == 0) {
         gettimeofday(&end_time, 0);
 
