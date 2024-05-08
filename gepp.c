@@ -210,6 +210,12 @@ int main(int argc, char* argv[]) {
         PROCESS_BEGIN = ib / b / numprocs * b;
         END = (ib + b) > n ? n : (ib + b);
         BEGIN = ib;
+
+		// init change sequence
+		for (i = 0; i < b; i++) {
+			change_sequence[i] = -1;
+		}
+
         if ((ib / b) % numprocs == rank) {
             // printf("rank: %d, ib: %d\n", rank, ib);
             // printf("rank: %d, ib: %d, BEGIN: %d, END: %d, PROCESS_BEGIN: %d\n", rank, ib, BEGIN, END, PROCESS_BEGIN);
@@ -274,7 +280,7 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
-
+		
         // barrier
         // MPI_Barrier(MPI_COMM_WORLD);
 
