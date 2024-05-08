@@ -62,10 +62,23 @@ int main(int argc, char* argv[]) {
         }
         printf("Done!\n\n");
 
+        double fixed[11][11] = {{0.31, 0.70, 0.59, 0.30, 0.55, 0.77, 0.48, 0.73, 0.07, 0.38, 0.19},
+                                {0.83, 0.98, 0.86, 0.16, 0.60, 0.95, 0.29, 0.53, 0.46, 0.69, 0.61},
+                                {0.88, 0.83, 0.80, 0.02, 0.05, 0.17, 0.24, 0.64, 0.15, 0.55, 0.33},
+                                {0.75, 0.85, 0.88, 0.52, 0.32, 0.61, 0.59, 0.70, 0.80, 0.42, 0.69},
+                                {0.66, 0.58, 0.29, 0.61, 0.87, 0.82, 0.07, 0.56, 0.43, 0.95, 0.40},
+                                {0.23, 0.98, 0.44, 0.40, 0.21, 0.08, 0.56, 0.76, 0.41, 0.31, 0.61},
+                                {0.29, 0.83, 0.93, 0.90, 0.42, 0.64, 0.70, 0.84, 0.33, 0.36, 0.42},
+                                {0.61, 0.97, 0.29, 0.43, 0.04, 0.86, 0.87, 0.99, 0.25, 0.10, 0.97},
+                                {0.70, 0.50, 0.19, 0.78, 0.06, 0.95, 0.19, 0.36, 0.56, 0.48, 0.19},
+                                {0.49, 0.38, 0.61, 0.13, 0.09, 0.45, 0.46, 0.45, 0.87, 0.07, 0.42},
+                                {0.17, 0.50, 0.46, 0.03, 0.37, 0.45, 0.28, 0.47, 0.43, 0.98, 0.97}};
+
         srand(time(0));
         for (i = 0; i < n; i++) {
             for (j = 0; j < n; j++) {
-                a1[i][j] = a[i][j] = (double)rand() / RAND_MAX;
+                // a1[i][j] = a[i][j] = (double)rand() / RAND_MAX;
+                a1[i][j] = a[i][j] = fixed[i][j];
             }
         }
     }
@@ -158,47 +171,52 @@ int main(int argc, char* argv[]) {
     // }
 
     // spread data
-    // MPI_Request* request = (MPI_Request *)malloc((GROUP_NUMS + 1) * sizeof(MPI_Request));
+    MPI_Request* request = (MPI_Request*)malloc(GROUP_NUMS * sizeof(MPI_Request));
 
     for (i = 0; i < GROUP_NUMS; i++) {
-        MPI_Scatter(a[0] + i * b * numprocs, b, col_t, process[0] + i * b, b, process_col_t, 0, MPI_COMM_WORLD);
+        MPI_Iscatter(a[0] + i * b * numprocs, b, col_t, process[0] + i * b, b, process_col_t, 0, MPI_COMM_WORLD,
+                     request + i);
     }
 
     // for remains
     // if (i * b * numprocs < n) {
-    // 	printf("111\n");
     //     MPI_Scatterv(a[0] + i * b * numprocs, sendcounts + i * numprocs, displs + i * numprocs, col_t, process + i *
     //     b,
     //                  b, process_col_t, 0, MPI_COMM_WORLD);
     // }
 
-    // MPI_Waitall(GROUP_NUMS + 1, request, MPI_STATUSES_IGNORE);
+    MPI_Waitall(GROUP_NUMS, request, MPI_STATUSES_IGNORE);
 
-    printf("original\n");
-    printf("rank: %d\n", rank);
-    print_matrix(process, n, COL_NUMS);
+    // printf("original\n");
+    // printf("rank: %d\n", rank);
+    // print_matrix(process, n, COL_NUMS);
 
-    double amax, cur;
-    int idx, k;
+    double amax, cur, top;
+    int idx, k, col;
     int END, BEGIN;
     double* c;
+    int* change_sequence = (int*)malloc(b * sizeof(int));
 
     // main gepp
-    for (int ib = 0; ib < n - b; ib += b) {
+    for (int ib = 0; ib < n; ib += b) {
         // find pivot row k
         if ((ib / b) % numprocs == rank) {
-            END = ib + b;
+            // printf("rank: %d, ib: %d\n", rank, ib);
+            END = (ib + b) > n ? n : (ib + b);
             BEGIN = ib;
             for (i = ib; i < END; i++) {
-                amax = process[i][i - ib];
-                idx = ib;
+                col = i - ib;
+                amax = process[i][col];
+                idx = i;
                 for (k = i + 1; k < n; k++) {
-                    cur = process[k][i - ib];
+                    cur = process[k][col];
                     if (fabs(cur) > fabs(amax)) {
                         amax = cur;
                         idx = k;
                     }
                 }
+
+                // printf("rank: %d, i: %d, idx: %d, amax: %lf\n", rank, i, idx, amax);
 
                 // exit with a warning that a is singular
                 if (amax == 0) {
@@ -209,14 +227,55 @@ int main(int argc, char* argv[]) {
                     c = process[i];
                     process[i] = process[idx];
                     process[idx] = c;
+                    change_sequence[col] = idx;
+                } else {
+                    change_sequence[col] = -1;
+                }
+
+                // store multiplier in place of A(k, col)
+                top = process[i][col];
+                for (k = i + 1; k < n; k++) {
+                    process[k][col] /= top;
+                }
+
+                // subtract multiple of row a(i,:) to zero out a(j,i)
+                for (k = i + 1; k < END; k++) {
+                    top = process[i][k - ib];
+                    for (j = i + 1; j < n; j++) {
+                        process[j][k - ib] -= top * process[j][col];
+                    }
                 }
             }
         }
+
+        // broadcast swap
+        MPI_Bcast(change_sequence, b, MPI_INT, (ib / b) % numprocs, MPI_COMM_WORLD);
+
+        if ((ib / b) % numprocs != rank) {
+			// print sequence
+			for (i = 0; i < b; i++) {
+				printf("%d ", change_sequence[i]);
+			}
+			printf("\n");
+            for (i = 0; i < b; i++) {
+                if (change_sequence[i] != -1) {
+                    c = process[i + ib];
+                    process[i + ib] = process[change_sequence[i]];
+                    process[change_sequence[i]] = c;
+                }
+            }
+        }
+
+		// barrier
+		// MPI_Barrier(MPI_COMM_WORLD);
+
+		// boradcast LL
+		
     }
 
-    // printf("row swap\n");
-    // printf("rank: %d\n", rank);
-    // print_matrix(process, n, COL_NUMS);
+    printf("row swap\n");
+    printf("rank: %d\n", rank);
+    print_matrix(process, n, COL_NUMS);
 
     if (rank == 0) {
         gettimeofday(&end_time, 0);
