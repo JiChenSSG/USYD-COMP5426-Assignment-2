@@ -139,7 +139,7 @@ int main(int argc, char* argv[]) {
     MPI_Request* request = (MPI_Request*)malloc(GROUP_NUMS * sizeof(MPI_Request));
 
     for (i = 0; i < GROUP_NUMS; i++) {
-        MPI_Iscatter(&a[0][0] + i * b * numprocs, b, col_t, &process[0][0] + i * b, b, process_col_t, 0, MPI_COMM_WORLD,
+        MPI_Iscatter(a[0] + i * b * numprocs, b, col_t, process[0] + i * b, b, process_col_t, 0, MPI_COMM_WORLD,
                      request + i);
     }
 
@@ -176,7 +176,6 @@ int main(int argc, char* argv[]) {
         CUR_RANK = (ib / b) % numprocs;
 
         if (CUR_RANK == rank) {
-            // printf("rank: %d, ib: %d, BEGIN: %d, END: %d, PROCESS_BEGIN: %d\n", rank, ib, BEGIN, END, PROCESS_BEGIN);
             for (i = ib; i < END; i++) {
                 col = PROCESS_BEGIN + i - ib;
                 amax = process[i][col];
