@@ -63,3 +63,4 @@ gepp_omp_d
 *.tar
 out
 example*
+gepp_u
