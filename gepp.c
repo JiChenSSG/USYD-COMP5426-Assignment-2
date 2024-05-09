@@ -193,9 +193,16 @@ int main(int argc, char* argv[]) {
 
     double amax, cur, top, left;
     int idx, k, col;
-    int END, BEGIN, PROCESS_BEGIN, LL_RIGHT_BEGIN;
+    int END, BEGIN, PROCESS_BEGIN, PROCESS_END, LL_RIGHT_BEGIN, CUR_RANK;
     double* c;
     int* change_sequence = (int*)malloc(b * sizeof(int));
+
+    double** left_matrix = (double**)malloc(n * sizeof(double));
+    double* left0 = (double*)malloc(n * b * sizeof(double));
+
+    for (i = 0; i < n; i++) {
+        left_matrix[i] = left0 + i * b;
+    }
 
     double** LL_matrix = malloc(b * sizeof(double*));
     double* LL0 = malloc(b * b * sizeof(double));
@@ -208,16 +215,17 @@ int main(int argc, char* argv[]) {
     for (int ib = 0; ib < n; ib += b) {
         // find pivot row k
         PROCESS_BEGIN = ib / b / numprocs * b;
+        PROCESS_END = PROCESS_BEGIN + b > COL_NUMS ? COL_NUMS : PROCESS_BEGIN + b;
         END = (ib + b) > n ? n : (ib + b);
         BEGIN = ib;
+        CUR_RANK = (ib / b) % numprocs;
 
-		// init change sequence
-		for (i = 0; i < b; i++) {
-			change_sequence[i] = -1;
-		}
+        // init change sequence
+        // for (i = 0; i < b; i++) {
+        //     change_sequence[i] = -1;
+        // }
 
-        if ((ib / b) % numprocs == rank) {
-            // printf("rank: %d, ib: %d\n", rank, ib);
+        if (CUR_RANK == rank) {
             // printf("rank: %d, ib: %d, BEGIN: %d, END: %d, PROCESS_BEGIN: %d\n", rank, ib, BEGIN, END, PROCESS_BEGIN);
             for (i = ib; i < END; i++) {
                 col = PROCESS_BEGIN + i - ib;
@@ -231,7 +239,8 @@ int main(int argc, char* argv[]) {
                     }
                 }
 
-                // printf("rank: %d, i: %d, idx: %d, amax: %lf\n", rank, i, idx, amax);
+                // printf("rank: %d idx: %d col: %d amax: %lf\n", rank, idx, col, amax);
+                // print_matrix(process, n, COL_NUMS);
 
                 // exit with a warning that a is singular
                 if (amax == 0) {
@@ -242,9 +251,9 @@ int main(int argc, char* argv[]) {
                     c = process[i];
                     process[i] = process[idx];
                     process[idx] = c;
-                    change_sequence[col] = idx;
+                    change_sequence[i - ib] = idx;
                 } else {
-                    change_sequence[col] = -1;
+                    change_sequence[i - ib] = -1;
                 }
 
                 // store multiplier in place of A(k, col)
@@ -255,37 +264,42 @@ int main(int argc, char* argv[]) {
 
                 // subtract multiple of row a(i,:) to zero out a(j,i)
                 for (k = i + 1; k < END; k++) {
-                    top = process[i][k - ib];
+                    top = process[i][PROCESS_BEGIN + k - ib];
                     for (j = i + 1; j < n; j++) {
-                        process[j][k - ib] -= top * process[j][col];
+                        process[j][PROCESS_BEGIN + k - ib] -= top * process[j][col];
                     }
                 }
             }
         }
 
         // broadcast swap
-        MPI_Bcast(change_sequence, b, MPI_INT, (ib / b) % numprocs, MPI_COMM_WORLD);
+        MPI_Bcast(change_sequence, b, MPI_INT, CUR_RANK, MPI_COMM_WORLD);
 
-        if ((ib / b) % numprocs != rank) {
-            // print sequence
-            // for (i = 0; i < b; i++) {
-            // 	printf("%d ", change_sequence[i]);
-            // }
-            // printf("\n");
-            for (i = 0; i < b; i++) {
-                if (change_sequence[i] != -1) {
-                    c = process[i + ib];
-                    process[i + ib] = process[change_sequence[i]];
-                    process[change_sequence[i]] = c;
+        // print sequence
+        // if (rank == 0) {
+        //     for (i = 0; i < b; i++) {
+        //         printf("%d ", change_sequence[i]);
+        //     }
+        //     printf("\n");
+        // }
+
+        // swap rows in other ranks
+        if (CUR_RANK != rank) {
+            for (i = ib; i < END; i++) {
+                int cs_idx = i - ib;
+                if (change_sequence[cs_idx] != -1) {
+                    c = process[i];
+                    process[i] = process[change_sequence[cs_idx]];
+                    process[change_sequence[cs_idx]] = c;
                 }
             }
         }
-		
+
         // barrier
         // MPI_Barrier(MPI_COMM_WORLD);
 
         // printf("row swap\n");
-        // printf("rank: %d\n", rank);
+        // printf("rank: %d ib: %d\n", rank, ib);
         // print_matrix(process, n, COL_NUMS);
 
         // boradcast LL
@@ -302,13 +316,15 @@ int main(int argc, char* argv[]) {
         MPI_Type_commit(&LL);
 
         // fill LL_matrix
-        if ((ib / b) % numprocs == rank) {
-            for (i = 0; i < b; i++) {
-                for (j = 0; j <= i; j++) {
-                    LL_matrix[i][j] = process[PROCESS_BEGIN + i][j];
+        if (CUR_RANK == rank) {
+            // printf("rank: %d ib: %d\n", rank, ib);
+            for (i = PROCESS_BEGIN; i < PROCESS_END; i++) {
+                for (j = PROCESS_BEGIN; j <= i; j++) {
+                    // printf("i - PROCESS_BEGIN: %d, i: %d, j - PROCESS_BEGIN: %d, j: %d\n", i - PROCESS_BEGIN, i,
+                    //        j - PROCESS_BEGIN, j);
+                    LL_matrix[i - PROCESS_BEGIN][j - PROCESS_BEGIN] = process[i + ib - PROCESS_BEGIN][j];
                 }
             }
-            // printf("rank: %d\n", rank);
             // print_matrix(LL_matrix, b, b);
         }
 
@@ -316,36 +332,95 @@ int main(int argc, char* argv[]) {
 
         // A(ib:end, end+1:n) = LL / A(ib:end, end+1:n)
 
-        // printf("rank: %d\n", rank);
-        // print_matrix(LL_matrix, b, b);
-
         LL_RIGHT_BEGIN = PROCESS_BEGIN;
-        if ((ib / b) % numprocs >= rank) {
+        if (CUR_RANK >= rank) {
             LL_RIGHT_BEGIN += b;
         }
 
-		// printf("rank: %d, LL_RIGHT_BEGIN: %d\n", rank, LL_RIGHT_BEGIN);
+        // printf("rank: %d, LL_RIGHT_BEGIN: %d\n", rank, LL_RIGHT_BEGIN);
+        // printf("rank: %d\n", rank);
+        // print_matrix(process, n, COL_NUMS);
 
         for (i = 0; i < b; i++) {
             for (j = ib + i + 1; j < END; j++) {
                 left = LL_matrix[j - ib][i];
                 // printf("rank: %d, i: %d, j - ib: %d, left: %lf\n", rank, i, j - ib, left);
                 for (k = LL_RIGHT_BEGIN; k < COL_NUMS; k++) {
-					// printf("rank: %d\n", rank);
-					// printf("i j k: %d %d %d\n", i, j, k);
-					// printf("process[j][k], left, process[ib + i][k]: %lf %lf %lf\n", process[j][k], left, process[ib + i][k]);
+                    // printf("rank: %d\n", rank);
+                    // printf("i j k: %d %d %d\n", i, j, k);
+                    // printf("process[j][k], left, process[ib + i][k]: %lf %lf %lf\n", process[j][k], left, process[ib
+                    // + i][k]);
                     process[j][k] -= left * process[ib + i][k];
                 }
             }
         }
-		
-		
+
+        // printf("LL Broadcast\n");
+        // printf("rank: %d\n", rank);
+        // print_matrix(process, n, COL_NUMS);
+
+        // clear left matrix
+        // for (i = 0; i < n; i++) {
+        // 	for (j = 0; j < b; j++) {
+        // 		left_matrix[i][j] = 0;
+        // 	}
+        // }
+
+        // bcast left matrix
+        int LEN_REMAIN = n - END;
+        if (CUR_RANK == rank) {
+            for (i = END; i < n; i++) {
+                for (j = PROCESS_BEGIN; j < PROCESS_END; j++) {
+                    left_matrix[i][j - PROCESS_BEGIN] = process[i][j];
+                }
+            }
+        }
+
+        MPI_Bcast(left_matrix[END], LEN_REMAIN * b, MPI_DOUBLE, CUR_RANK, MPI_COMM_WORLD);
+
+        // print left
+        // if (0 == rank) {
+        // 	printf("rank: %d ib %d left\n", rank, ib);
+        // 	print_matrix(left_matrix, n, b);
+        // }
+
+        // calculate trail matrix
+        // printf("rank: %d\n", rank);
+        for (i = LL_RIGHT_BEGIN; i < COL_NUMS; i++) {
+            for (j = END; j < n; j++) {
+                for (k = 0; k < b; k++) {
+                    // printf("i j k: %d %d %d\n", i, j, k);
+                    // printf("process[j][i], left_matrix[j][k], process[ib + k][i]: %lf %lf %lf\n", process[j][i],
+                    //        left_matrix[j][k], process[ib + k][i]);
+                    process[j][i] -= left_matrix[j][k] * process[ib + k][i];
+                }
+            }
+        }
+
+        // print calculated trail matrix
+        // printf("rank: %d trail matrix\n", rank);
+        // print_matrix(process, n, COL_NUMS);
+        // char filename[100];
+        // sprintf(filename, "rank_%d.txt", rank);
+        // FILE* fp = fopen(filename, "a");
+        // fprintf(fp, "round: %d\n", ib);
+        // for (i = 0; i < n; i++) {
+        //     for (j = 0; j < COL_NUMS; j++) {
+        //         fprintf(fp, "%.2f\t", process[i][j]);
+        //     }
+        //     fprintf(fp, "\n");
+        // }
+        // fprintf(fp, "\n\n");
+        // fclose(fp);
+
+        // barrier
+        MPI_Barrier(MPI_COMM_WORLD);
     }
 
-    printf("LL Broadcast\n");
-    printf("rank: %d\n", rank);
+    // final
+    printf("rank: %d final\n", rank);
     print_matrix(process, n, COL_NUMS);
-	
+
     if (rank == 0) {
         gettimeofday(&end_time, 0);
 
