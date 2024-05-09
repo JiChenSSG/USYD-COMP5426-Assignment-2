@@ -53,11 +53,11 @@ int main(int argc, char* argv[]) {
         a = (double**)malloc(n * sizeof(double*));
         a1 = (double**)malloc(n * sizeof(double*));
 
-        double* a0 = (double*)malloc(n * n * sizeof(double));
+        double* a0 = (double*)malloc(n * (n + b * numprocs) * sizeof(double));
         double* a10 = (double*)malloc(n * n * sizeof(double));
 
         for (i = 0; i < n; i++) {
-            a[i] = a0 + i * n;
+            a[i] = a0 + i * (n + b * numprocs);
             a1[i] = a10 + i * n;
         }
         printf("Done!\n\n");
@@ -77,8 +77,8 @@ int main(int argc, char* argv[]) {
         srand(time(0));
         for (i = 0; i < n; i++) {
             for (j = 0; j < n; j++) {
-                // a1[i][j] = a[i][j] = (double)rand() / RAND_MAX;
-                a1[i][j] = a[i][j] = fixed[i][j];
+                a1[i][j] = a[i][j] = (double)rand() / RAND_MAX;
+                // a1[i][j] = a[i][j] = fixed[i][j];
             }
         }
     }
@@ -97,8 +97,10 @@ int main(int argc, char* argv[]) {
         printf("sequential calculation time: %f\n\n", elapsed);
     }
 
+	MPI_Barrier(MPI_COMM_WORLD);
+
     if (rank == 0) {
-        print_matrix(a, n, n);
+        // print_matrix(a, n, n);
         printf("Starting MPI computation...\n");
         gettimeofday(&start_time, 0);
     }
@@ -111,7 +113,7 @@ int main(int argc, char* argv[]) {
 
     MPI_Datatype col_t;
     MPI_Datatype process_col_t;
-    MPI_Type_vector(n, 1, n, MPI_DOUBLE, &col_t);
+    MPI_Type_vector(n, 1, n + b * numprocs, MPI_DOUBLE, &col_t);
     MPI_Type_vector(n, 1, GROUP_NUMS * b, MPI_DOUBLE, &process_col_t);
 
     MPI_Type_create_resized(col_t, 0, sizeof(double), &col_t);
@@ -195,6 +197,7 @@ int main(int argc, char* argv[]) {
     int idx, k, col;
     int END, BEGIN, PROCESS_BEGIN, PROCESS_END, LL_RIGHT_BEGIN, CUR_RANK;
     double* c;
+	double c0;
     int* change_sequence = (int*)malloc(b * sizeof(int));
 
     double** left_matrix = (double**)malloc(n * sizeof(double));
@@ -248,9 +251,14 @@ int main(int argc, char* argv[]) {
                     exit(1);
                 } else if (idx != i) {
                     // swap row i and row k
-                    c = process[i];
-                    process[i] = process[idx];
-                    process[idx] = c;
+					for (j = 0; j < COL_NUMS; j++) {
+						c0 = process[i][j];
+						process[i][j] = process[idx][j];
+						process[idx][j] = c0;
+					}
+                    // c = process[i];
+                    // process[i] = process[idx];
+                    // process[idx] = c;
                     change_sequence[i - ib] = idx;
                 } else {
                     change_sequence[i - ib] = -1;
@@ -288,9 +296,14 @@ int main(int argc, char* argv[]) {
             for (i = ib; i < END; i++) {
                 int cs_idx = i - ib;
                 if (change_sequence[cs_idx] != -1) {
-                    c = process[i];
-                    process[i] = process[change_sequence[cs_idx]];
-                    process[change_sequence[cs_idx]] = c;
+					for (j = 0; j < COL_NUMS; j++) {
+						c0 = process[i][j];
+						process[i][j] = process[change_sequence[cs_idx]][j];
+						process[change_sequence[cs_idx]][j] = c0;
+					}
+                    // c = process[i];
+                    // process[i] = process[change_sequence[cs_idx]];
+                    // process[change_sequence[cs_idx]] = c;
                 }
             }
         }
@@ -414,15 +427,41 @@ int main(int argc, char* argv[]) {
         // fclose(fp);
 
         // barrier
-        MPI_Barrier(MPI_COMM_WORLD);
+        // MPI_Barrier(MPI_COMM_WORLD);
     }
 
     // final
-    printf("rank: %d final\n", rank);
-    print_matrix(process, n, COL_NUMS);
+    // printf("rank: %d final\n", rank);
+    // print_matrix(process, n, COL_NUMS);
+
+    // clean a
+    // if (rank == 0) {
+    //     for (i = 0; i < n; i++) {
+    //         for (j = 0; j < n; j++) {
+    //             a[i][j] = 0;
+    //         }
+    //     }
+    // }
+	
+    // if (rank == 2) {
+    //     for (i = 0; i < COL_NUMS * n; i++) {
+    //         printf("%.2lf ", *(process[0] + i));
+    //     }
+    //     printf("\n");
+    // }
+
+    // gather
+    for (i = 0; i < GROUP_NUMS; i++) {
+    	MPI_Igather(process[0] + i * b, b, process_col_t, a[0] + i * b * numprocs, b, col_t, 0, MPI_COMM_WORLD, request + i);
+    }
+	
+	MPI_Waitall(GROUP_NUMS, request, MPI_STATUSES_IGNORE);
 
     if (rank == 0) {
         gettimeofday(&end_time, 0);
+
+        // print_matrix(a1, n, n);
+        // print_matrix(a, n, n);
 
         // print the running time
         seconds = end_time.tv_sec - start_time.tv_sec;
