@@ -33,7 +33,8 @@ int main(int argc, char* argv[]) {
             n = atoi(argv[1]);
             b = atoi(argv[2]);
             printf("The matrix size: %d * %d\n", n, n);
-            printf("The block size: %d\n\n", b);
+            printf("The block size: %d\n", b);
+			printf("The number of processes: %d\n\n", numprocs);
         } else {
             printf(
                 "Usage: %s n b\n"
@@ -138,6 +139,8 @@ int main(int argc, char* argv[]) {
     double* c;
     double c0;
     int* change_sequence = (int*)malloc(b * sizeof(int));
+	int* disps_ll = (int*)malloc(b * sizeof(int));
+	int* blocklens_ll = (int*)malloc(b * sizeof(int));
 
     double** left_matrix = (double**)malloc(n * sizeof(double));
     double* left0 = (double*)malloc(n * b * sizeof(double));
@@ -225,9 +228,6 @@ int main(int argc, char* argv[]) {
         }
 
         // boradcast LL
-        int* disps_ll = (int*)malloc(b * sizeof(int));
-        int* blocklens_ll = (int*)malloc(b * sizeof(int));
-
         for (i = 0; i < b; i++) {
             blocklens_ll[i] = i + 1;
             disps_ll[i] = b * i;
