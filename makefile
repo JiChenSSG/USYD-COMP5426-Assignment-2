@@ -1,5 +1,6 @@
 CC=mpicc
 DEBUGFLAGS=-DDEBUG
+CFLAGS=-O3
 
 all: gepp
 

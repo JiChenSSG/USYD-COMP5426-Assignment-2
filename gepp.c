@@ -151,12 +151,16 @@ int main(int argc, char* argv[]) {
 
     // double* process = (double*)malloc(n * GROUP_NUMS * b * sizeof(double));
 
-    double** process = malloc(n * sizeof(double*));
-    double* process0 = malloc(GROUP_NUMS * b * n * sizeof(double));
+    double** process = (double**)malloc(n * sizeof(double*));
+    double* process0 = (double*)malloc(GROUP_NUMS * b * n * sizeof(double));
 
     for (i = 0; i < n; i++) {
         process[i] = process0 + i * GROUP_NUMS * b;
     }
+
+    
+    //printf("RANK: %d, COL_NUMS: %d\n", rank, COL_NUMS);
+
 
     // if (rank == 0) {
     // 	printf("sendcounts: ");
@@ -174,11 +178,13 @@ int main(int argc, char* argv[]) {
 
     // spread data
     MPI_Request* request = (MPI_Request*)malloc(GROUP_NUMS * sizeof(MPI_Request));
-
+    
     for (i = 0; i < GROUP_NUMS; i++) {
-        MPI_Iscatter(a[0] + i * b * numprocs, b, col_t, process[0] + i * b, b, process_col_t, 0, MPI_COMM_WORLD,
-                     request + i);
+        MPI_Iscatter(&a[0][0] + i * b * numprocs, b, col_t, &process[0][0] + i * b, b, process_col_t, 0, MPI_COMM_WORLD,
+                    request + i);
     }
+
+    printf("rank %d\n", rank);
 
     // for remains
     // if (i * b * numprocs < n) {
@@ -248,7 +254,7 @@ int main(int argc, char* argv[]) {
                 // exit with a warning that a is singular
                 if (amax == 0) {
                     printf("Rank %d: matrix is singular!\n", rank);
-                    exit(1);
+                    //exit(1);
                 } else if (idx != i) {
                     // swap row i and row k
 					for (j = 0; j < COL_NUMS; j++) {
@@ -452,7 +458,7 @@ int main(int argc, char* argv[]) {
 
     // gather
     for (i = 0; i < GROUP_NUMS; i++) {
-    	MPI_Igather(process[0] + i * b, b, process_col_t, a[0] + i * b * numprocs, b, col_t, 0, MPI_COMM_WORLD, request + i);
+   	MPI_Igather(process[0] + i * b, b, process_col_t, a[0] + i * b * numprocs, b, col_t, 0, MPI_COMM_WORLD, request + i);
     }
 	
 	MPI_Waitall(GROUP_NUMS, request, MPI_STATUSES_IGNORE);
