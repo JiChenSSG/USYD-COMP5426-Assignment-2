@@ -97,7 +97,7 @@ int main(int argc, char* argv[]) {
         printf("sequential calculation time: %f\n\n", elapsed);
     }
 
-	MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(MPI_COMM_WORLD);
 
     if (rank == 0) {
         // print_matrix(a, n, n);
@@ -121,35 +121,12 @@ int main(int argc, char* argv[]) {
     MPI_Type_commit(&col_t);
     MPI_Type_commit(&process_col_t);
 
-    // align with group nums
-    // int* sendcounts = (int*)malloc(GROUP_NUMS * numprocs * sizeof(int));
-    // int* displs = (int*)malloc(GROUP_NUMS * numprocs * sizeof(int));
-
-    // initilize sendcounts and displs
-    // for (i = 0; i < GROUP_NUMS * numprocs; i++) {
-    //     sendcounts[i] = 0;
-    //     displs[i] = 0;
-    // }
-
-    // for (i = 0; i < BLOCK_NUMS; i++) {
-    //     sendcounts[i] = b;
-    // }
-
-    // if (n % b != 0) {
-    //     sendcounts[BLOCK_NUMS - 1] = n % b;
-    // }
-
     // calculate col number
     // basic + remain_block + remain_non_block
     int COL_NUMS = (GROUP_NUMS - (BLOCK_NUMS % numprocs != 0 || n % b != 0)) * b +
                    ((BLOCK_NUMS - (n % b != 0)) % numprocs > rank ? b : 0) +
                    ((BLOCK_NUMS - (n % b != 0)) % numprocs == rank ? n % b : 0);
 
-    // for (i = 0; i < BLOCK_NUMS; i++) {
-    //     displs[i] = i * b;
-    // }
-
-    // double* process = (double*)malloc(n * GROUP_NUMS * b * sizeof(double));
 
     double** process = (double**)malloc(n * sizeof(double*));
     double* process0 = (double*)malloc(GROUP_NUMS * b * n * sizeof(double));
@@ -158,52 +135,21 @@ int main(int argc, char* argv[]) {
         process[i] = process0 + i * GROUP_NUMS * b;
     }
 
-    
-    //printf("RANK: %d, COL_NUMS: %d\n", rank, COL_NUMS);
-
-
-    // if (rank == 0) {
-    // 	printf("sendcounts: ");
-    // 	for (i = 0; i < GROUP_NUMS * numprocs; i++) {
-    // 		printf("%d ", sendcounts[i]);
-    // 	}
-    // 	printf("\n");
-
-    // 	printf("displs: ");
-    // 	for (i = 0; i < GROUP_NUMS * numprocs; i++) {
-    // 		printf("%d ", displs[i]);
-    // 	}
-    // 	printf("\n");
-    // }
-
     // spread data
     MPI_Request* request = (MPI_Request*)malloc(GROUP_NUMS * sizeof(MPI_Request));
-    
+
     for (i = 0; i < GROUP_NUMS; i++) {
         MPI_Iscatter(&a[0][0] + i * b * numprocs, b, col_t, &process[0][0] + i * b, b, process_col_t, 0, MPI_COMM_WORLD,
-                    request + i);
+                     request + i);
     }
 
-    printf("rank %d\n", rank);
-
-    // for remains
-    // if (i * b * numprocs < n) {
-    //     MPI_Scatterv(a[0] + i * b * numprocs, sendcounts + i * numprocs, displs + i * numprocs, col_t, process + i *
-    //     b,
-    //                  b, process_col_t, 0, MPI_COMM_WORLD);
-    // }
-
     MPI_Waitall(GROUP_NUMS, request, MPI_STATUSES_IGNORE);
-
-    // printf("original\n");
-    // printf("rank: %d\n", rank);
-    // print_matrix(process, n, COL_NUMS);
 
     double amax, cur, top, left;
     int idx, k, col;
     int END, BEGIN, PROCESS_BEGIN, PROCESS_END, LL_RIGHT_BEGIN, CUR_RANK;
     double* c;
-	double c0;
+    double c0;
     int* change_sequence = (int*)malloc(b * sizeof(int));
 
     double** left_matrix = (double**)malloc(n * sizeof(double));
@@ -229,11 +175,6 @@ int main(int argc, char* argv[]) {
         BEGIN = ib;
         CUR_RANK = (ib / b) % numprocs;
 
-        // init change sequence
-        // for (i = 0; i < b; i++) {
-        //     change_sequence[i] = -1;
-        // }
-
         if (CUR_RANK == rank) {
             // printf("rank: %d, ib: %d, BEGIN: %d, END: %d, PROCESS_BEGIN: %d\n", rank, ib, BEGIN, END, PROCESS_BEGIN);
             for (i = ib; i < END; i++) {
@@ -248,23 +189,17 @@ int main(int argc, char* argv[]) {
                     }
                 }
 
-                // printf("rank: %d idx: %d col: %d amax: %lf\n", rank, idx, col, amax);
-                // print_matrix(process, n, COL_NUMS);
-
                 // exit with a warning that a is singular
                 if (amax == 0) {
                     printf("Rank %d: matrix is singular!\n", rank);
-                    //exit(1);
+                    // exit(1);
                 } else if (idx != i) {
                     // swap row i and row k
-					for (j = 0; j < COL_NUMS; j++) {
-						c0 = process[i][j];
-						process[i][j] = process[idx][j];
-						process[idx][j] = c0;
-					}
-                    // c = process[i];
-                    // process[i] = process[idx];
-                    // process[idx] = c;
+                    for (j = 0; j < COL_NUMS; j++) {
+                        c0 = process[i][j];
+                        process[i][j] = process[idx][j];
+                        process[idx][j] = c0;
+                    }
                     change_sequence[i - ib] = idx;
                 } else {
                     change_sequence[i - ib] = -1;
@@ -289,37 +224,19 @@ int main(int argc, char* argv[]) {
         // broadcast swap
         MPI_Bcast(change_sequence, b, MPI_INT, CUR_RANK, MPI_COMM_WORLD);
 
-        // print sequence
-        // if (rank == 0) {
-        //     for (i = 0; i < b; i++) {
-        //         printf("%d ", change_sequence[i]);
-        //     }
-        //     printf("\n");
-        // }
-
         // swap rows in other ranks
         if (CUR_RANK != rank) {
             for (i = ib; i < END; i++) {
                 int cs_idx = i - ib;
                 if (change_sequence[cs_idx] != -1) {
-					for (j = 0; j < COL_NUMS; j++) {
-						c0 = process[i][j];
-						process[i][j] = process[change_sequence[cs_idx]][j];
-						process[change_sequence[cs_idx]][j] = c0;
-					}
-                    // c = process[i];
-                    // process[i] = process[change_sequence[cs_idx]];
-                    // process[change_sequence[cs_idx]] = c;
+                    for (j = 0; j < COL_NUMS; j++) {
+                        c0 = process[i][j];
+                        process[i][j] = process[change_sequence[cs_idx]][j];
+                        process[change_sequence[cs_idx]][j] = c0;
+                    }
                 }
             }
         }
-
-        // barrier
-        // MPI_Barrier(MPI_COMM_WORLD);
-
-        // printf("row swap\n");
-        // printf("rank: %d ib: %d\n", rank, ib);
-        // print_matrix(process, n, COL_NUMS);
 
         // boradcast LL
         int* disps_ll = (int*)malloc(b * sizeof(int));
@@ -336,54 +253,29 @@ int main(int argc, char* argv[]) {
 
         // fill LL_matrix
         if (CUR_RANK == rank) {
-            // printf("rank: %d ib: %d\n", rank, ib);
             for (i = PROCESS_BEGIN; i < PROCESS_END; i++) {
                 for (j = PROCESS_BEGIN; j <= i; j++) {
-                    // printf("i - PROCESS_BEGIN: %d, i: %d, j - PROCESS_BEGIN: %d, j: %d\n", i - PROCESS_BEGIN, i,
-                    //        j - PROCESS_BEGIN, j);
                     LL_matrix[i - PROCESS_BEGIN][j - PROCESS_BEGIN] = process[i + ib - PROCESS_BEGIN][j];
                 }
             }
-            // print_matrix(LL_matrix, b, b);
         }
 
         MPI_Bcast(LL_matrix[0], 1, LL, (ib / b) % numprocs, MPI_COMM_WORLD);
 
         // A(ib:end, end+1:n) = LL / A(ib:end, end+1:n)
-
         LL_RIGHT_BEGIN = PROCESS_BEGIN;
         if (CUR_RANK >= rank) {
             LL_RIGHT_BEGIN += b;
         }
 
-        // printf("rank: %d, LL_RIGHT_BEGIN: %d\n", rank, LL_RIGHT_BEGIN);
-        // printf("rank: %d\n", rank);
-        // print_matrix(process, n, COL_NUMS);
-
         for (i = 0; i < b; i++) {
             for (j = ib + i + 1; j < END; j++) {
                 left = LL_matrix[j - ib][i];
-                // printf("rank: %d, i: %d, j - ib: %d, left: %lf\n", rank, i, j - ib, left);
                 for (k = LL_RIGHT_BEGIN; k < COL_NUMS; k++) {
-                    // printf("rank: %d\n", rank);
-                    // printf("i j k: %d %d %d\n", i, j, k);
-                    // printf("process[j][k], left, process[ib + i][k]: %lf %lf %lf\n", process[j][k], left, process[ib
-                    // + i][k]);
                     process[j][k] -= left * process[ib + i][k];
                 }
             }
         }
-
-        // printf("LL Broadcast\n");
-        // printf("rank: %d\n", rank);
-        // print_matrix(process, n, COL_NUMS);
-
-        // clear left matrix
-        // for (i = 0; i < n; i++) {
-        // 	for (j = 0; j < b; j++) {
-        // 		left_matrix[i][j] = 0;
-        // 	}
-        // }
 
         // bcast left matrix
         int LEN_REMAIN = n - END;
@@ -397,71 +289,24 @@ int main(int argc, char* argv[]) {
 
         MPI_Bcast(left_matrix[END], LEN_REMAIN * b, MPI_DOUBLE, CUR_RANK, MPI_COMM_WORLD);
 
-        // print left
-        // if (0 == rank) {
-        // 	printf("rank: %d ib %d left\n", rank, ib);
-        // 	print_matrix(left_matrix, n, b);
-        // }
-
         // calculate trail matrix
         // printf("rank: %d\n", rank);
         for (i = LL_RIGHT_BEGIN; i < COL_NUMS; i++) {
             for (j = END; j < n; j++) {
                 for (k = 0; k < b; k++) {
-                    // printf("i j k: %d %d %d\n", i, j, k);
-                    // printf("process[j][i], left_matrix[j][k], process[ib + k][i]: %lf %lf %lf\n", process[j][i],
-                    //        left_matrix[j][k], process[ib + k][i]);
                     process[j][i] -= left_matrix[j][k] * process[ib + k][i];
                 }
             }
         }
-
-        // print calculated trail matrix
-        // printf("rank: %d trail matrix\n", rank);
-        // print_matrix(process, n, COL_NUMS);
-        // char filename[100];
-        // sprintf(filename, "rank_%d.txt", rank);
-        // FILE* fp = fopen(filename, "a");
-        // fprintf(fp, "round: %d\n", ib);
-        // for (i = 0; i < n; i++) {
-        //     for (j = 0; j < COL_NUMS; j++) {
-        //         fprintf(fp, "%.2f\t", process[i][j]);
-        //     }
-        //     fprintf(fp, "\n");
-        // }
-        // fprintf(fp, "\n\n");
-        // fclose(fp);
-
-        // barrier
-        // MPI_Barrier(MPI_COMM_WORLD);
     }
-
-    // final
-    // printf("rank: %d final\n", rank);
-    // print_matrix(process, n, COL_NUMS);
-
-    // clean a
-    // if (rank == 0) {
-    //     for (i = 0; i < n; i++) {
-    //         for (j = 0; j < n; j++) {
-    //             a[i][j] = 0;
-    //         }
-    //     }
-    // }
-	
-    // if (rank == 2) {
-    //     for (i = 0; i < COL_NUMS * n; i++) {
-    //         printf("%.2lf ", *(process[0] + i));
-    //     }
-    //     printf("\n");
-    // }
 
     // gather
     for (i = 0; i < GROUP_NUMS; i++) {
-   	MPI_Igather(process[0] + i * b, b, process_col_t, a[0] + i * b * numprocs, b, col_t, 0, MPI_COMM_WORLD, request + i);
+        MPI_Igather(process[0] + i * b, b, process_col_t, a[0] + i * b * numprocs, b, col_t, 0, MPI_COMM_WORLD,
+                    request + i);
     }
-	
-	MPI_Waitall(GROUP_NUMS, request, MPI_STATUSES_IGNORE);
+
+    MPI_Waitall(GROUP_NUMS, request, MPI_STATUSES_IGNORE);
 
     if (rank == 0) {
         gettimeofday(&end_time, 0);
