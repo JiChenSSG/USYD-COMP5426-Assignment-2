@@ -1,14 +1,14 @@
 CC=mpicc
-DEBUGFLAGS=-DDEBUG
-CFLAGS=-O3
+DEBUGFLAGS=-DDEBUG 
+CFLAGS=-O3 -Wextra -Wall
 
-all: gepp
+all: gepp gepp_u
 
 gepp: gepp.c
-	$(CC) $(CFLAGS) -o gepp gepp.c $(OMPFLAGS)
+	$(CC) $(CFLAGS) -o gepp gepp.c
 
-debug: gepp.c
-	$(CC) $(CFLAGS) $(DEBUGFLAGS) -o gepp_d gepp.c $(OMPFLAGS)
+gepp_u: gepp_unrolling.c
+	$(CC) $(CFLAGS) -o gepp_u gepp_unrolling.c
 
 clean:
 	rm -f gepp example gepp_d omp
