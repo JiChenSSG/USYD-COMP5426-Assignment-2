@@ -312,12 +312,63 @@ int main(int argc, char* argv[]) {
             LL_RIGHT_BEGIN += b;
         }
 
-        for (i = 0; i < b; i++) {
-            for (j = ib + i + 1; j < END; j++) {
-                left = LL_matrix[j - ib][i];
 
-                for (k = LL_RIGHT_BEGIN; k < COL_NUMS; k++) {
-                    process[j][k] -= left * process[ib + i][k];
+        for (i = 0; i < b; i++) {
+            for (j = BEGIN + i + 1; j < END - 4; j += 4) {
+                l0 = LL_matrix[j - BEGIN][i];
+                l1 = LL_matrix[j - BEGIN + 1][i];
+                l2 = LL_matrix[j - BEGIN + 2][i];
+                l3 = LL_matrix[j - BEGIN + 3][i];
+
+                for (k = LL_RIGHT_BEGIN; k < COL_NUMS - 4; k += 4) {
+                    t0 = process[BEGIN + i][k];
+                    t1 = process[BEGIN + i][k + 1];
+                    t2 = process[BEGIN + i][k + 2];
+                    t3 = process[BEGIN + i][k + 3];
+
+                    process[j][k] -= l0 * t0;
+                    process[j][k + 1] -= l0 * t1;
+                    process[j][k + 2] -= l0 * t2;
+                    process[j][k + 3] -= l0 * t3;
+
+                    process[j + 1][k] -= l1 * t0;
+                    process[j + 1][k + 1] -= l1 * t1;
+                    process[j + 1][k + 2] -= l1 * t2;
+                    process[j + 1][k + 3] -= l1 * t3;
+
+                    process[j + 2][k] -= l2 * t0;
+                    process[j + 2][k + 1] -= l2 * t1;
+                    process[j + 2][k + 2] -= l2 * t2;
+                    process[j + 2][k + 3] -= l2 * t3;
+
+                    process[j + 3][k] -= l3 * t0;
+                    process[j + 3][k + 1] -= l3 * t1;
+                    process[j + 3][k + 2] -= l3 * t2;
+                    process[j + 3][k + 3] -= l3 * t3;
+                }
+
+                for (; k < COL_NUMS; k++) {
+                    t0 = process[BEGIN + i][k];
+
+                    process[j][k] -= l0 * t0;
+                    process[j + 1][k] -= l1 * t0;
+                    process[j + 2][k] -= l2 * t0;
+                    process[j + 3][k] -= l3 * t0;
+                }
+            }
+
+            for (; j < END; j++) {
+                l0 = LL_matrix[j - BEGIN][i];
+
+                for (k = LL_RIGHT_BEGIN; k < COL_NUMS - 4; k += 4) {
+                    process[j][k] -= l0 * process[BEGIN + i][k];
+                    process[j][k + 1] -= l0 * process[BEGIN + i][k + 1];
+                    process[j][k + 2] -= l0 * process[BEGIN + i][k + 2];
+                    process[j][k + 3] -= l0 * process[BEGIN + i][k + 3];
+                }
+
+                for (; k < COL_NUMS; k++) {
+                    process[j][k] -= l0 * process[BEGIN + i][k];
                 }
             }
         }
@@ -339,7 +390,7 @@ int main(int argc, char* argv[]) {
         for (i = LL_RIGHT_BEGIN; i < COL_NUMS; i++) {
             for (j = END; j < n; j++) {
                 for (k = 0; k < b; k++) {
-                    process[j][i] -= left_matrix[j][k] * process[ib + k][i];
+                    process[j][i] -= left_matrix[j][k] * process[BEGIN + k][i];
                 }
             }
         }
