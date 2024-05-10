@@ -181,7 +181,7 @@ int main(int argc, char* argv[]) {
                 // exit with a warning that a is singular
                 if (amax == 0) {
                     printf("Rank %d: matrix is singular!\n", rank);
-                    // exit(1);
+                    exit(1);
                 } else if (idx != i) {
                     // swap row i and row k
                     for (j = 0; j < COL_NUMS; j++) {
