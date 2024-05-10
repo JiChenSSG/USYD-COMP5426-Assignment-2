@@ -388,10 +388,98 @@ int main(int argc, char* argv[]) {
         // calculate trail matrix
         // printf("rank: %d\n", rank);
         for (i = LL_RIGHT_BEGIN; i < COL_NUMS; i++) {
-            for (j = END; j < n; j++) {
-                for (k = 0; k < b; k++) {
-                    process[j][i] -= left_matrix[j][k] * process[BEGIN + k][i];
-                }
+			for (j = END; j < n - 4; j += 4) {
+				t0 = process[BEGIN][i];
+				t1 = process[BEGIN + 1][i];
+				t2 = process[BEGIN + 2][i];
+				t3 = process[BEGIN + 3][i];
+
+				l0 = left_matrix[j][0];
+				l1 = left_matrix[j][1];
+				l2 = left_matrix[j][2];
+				l3 = left_matrix[j][3];
+
+				process[j][i] = process[j][i] - l0 * t0 - l1 * t1 - l2 * t2 - l3 * t3;
+
+				l0 = left_matrix[j + 1][0];
+				l1 = left_matrix[j + 1][1];
+				l2 = left_matrix[j + 1][2];
+				l3 = left_matrix[j + 1][3];
+
+				process[j + 1][i] = process[j + 1][i] - l0 * t0 - l1 * t1 - l2 * t2 - l3 * t3;
+
+				l0 = left_matrix[j + 2][0];
+				l1 = left_matrix[j + 2][1];
+				l2 = left_matrix[j + 2][2];
+				l3 = left_matrix[j + 2][3];
+
+				process[j + 2][i] = process[j + 2][i] - l0 * t0 - l1 * t1 - l2 * t2 - l3 * t3;
+
+				l0 = left_matrix[j + 3][0];
+				l1 = left_matrix[j + 3][1];
+				l2 = left_matrix[j + 3][2];
+				l3 = left_matrix[j + 3][3];
+
+				process[j + 3][i] = process[j + 3][i] - l0 * t0 - l1 * t1 - l2 * t2 - l3 * t3;
+
+				t0 = process[BEGIN + 4][i];
+				t1 = process[BEGIN + 5][i];
+				t2 = process[BEGIN + 6][i];
+				t3 = process[BEGIN + 7][i];
+
+				l0 = left_matrix[j][4];
+				l1 = left_matrix[j][5];
+				l2 = left_matrix[j][6];
+				l3 = left_matrix[j][7];
+
+				process[j][i] = process[j][i] - l0 * t0 - l1 * t1 - l2 * t2 - l3 * t3;
+
+				l0 = left_matrix[j + 1][4];
+				l1 = left_matrix[j + 1][5];
+				l2 = left_matrix[j + 1][6];
+				l3 = left_matrix[j + 1][7];
+
+				process[j + 1][i] = process[j + 1][i] - l0 * t0 - l1 * t1 - l2 * t2 - l3 * t3;
+
+				l0 = left_matrix[j + 2][4];
+				l1 = left_matrix[j + 2][5];
+				l2 = left_matrix[j + 2][6];
+				l3 = left_matrix[j + 2][7];
+
+				process[j + 2][i] = process[j + 2][i] - l0 * t0 - l1 * t1 - l2 * t2 - l3 * t3;
+
+				l0 = left_matrix[j + 3][4];
+				l1 = left_matrix[j + 3][5];
+				l2 = left_matrix[j + 3][6];
+				l3 = left_matrix[j + 3][7];
+
+				process[j + 3][i] = process[j + 3][i] - l0 * t0 - l1 * t1 - l2 * t2 - l3 * t3;
+			}
+
+            for (; j < n; j++) {
+				t0 = process[BEGIN][i];
+				t1 = process[BEGIN + 1][i];
+				t2 = process[BEGIN + 2][i];
+				t3 = process[BEGIN + 3][i];
+
+				l0 = left_matrix[j][0];
+				l1 = left_matrix[j][1];
+				l2 = left_matrix[j][2];
+				l3 = left_matrix[j][3];
+
+				process[j][i] = process[j][i] - l0 * t0 - l1 * t1 - l2 * t2 - l3 * t3;
+                
+				t0 = process[BEGIN + 4][i];
+				t1 = process[BEGIN + 5][i];
+				t2 = process[BEGIN + 6][i];
+				t3 = process[BEGIN + 7][i];
+
+				l0 = left_matrix[j][4];
+				l1 = left_matrix[j][5];
+				l2 = left_matrix[j][6];
+				l3 = left_matrix[j][7];
+
+				process[j][i] = process[j][i] - l0 * t0 - l1 * t1 - l2 * t2 - l3 * t3;	
             }
         }
     }
