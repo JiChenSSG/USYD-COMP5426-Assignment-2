@@ -1,6 +1,5 @@
 CC=mpicc
 DEBUGFLAGS=-DDEBUG 
-CFLAGS=-O2 -Wextra -Wall
 
 all: gepp gepp_u
 
