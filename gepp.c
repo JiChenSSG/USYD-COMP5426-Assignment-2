@@ -48,7 +48,6 @@ int main(int argc, char* argv[]) {
     n = atoi(argv[1]);
     b = atoi(argv[2]);
 
-    printf("Creating and initializing matrices...\n");
     /*** Allocate contiguous memory for 2D matrices ***/
     a = (double**)calloc(n, sizeof(double*));
     a1 = (double**)calloc(n, sizeof(double*));
@@ -60,7 +59,6 @@ int main(int argc, char* argv[]) {
         a[i] = a0 + i * (n + b * numprocs);
         a1[i] = a10 + i * n;
     }
-    printf("Done!\n\n");
 
     srand(time(0));
     for (i = 0; i < n; i++) {
