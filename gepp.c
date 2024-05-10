@@ -34,7 +34,7 @@ int main(int argc, char* argv[]) {
             b = atoi(argv[2]);
             printf("The matrix size: %d * %d\n", n, n);
             printf("The block size: %d\n", b);
-			printf("The number of processes: %d\n\n", numprocs);
+            printf("The number of processes: %d\n\n", numprocs);
         } else {
             printf(
                 "Usage: %s n b\n"
@@ -48,26 +48,24 @@ int main(int argc, char* argv[]) {
     n = atoi(argv[1]);
     b = atoi(argv[2]);
 
-    if (rank == 0) {
-        printf("Creating and initializing matrices...\n");
-        /*** Allocate contiguous memory for 2D matrices ***/
-        a = (double**)malloc(n * sizeof(double*));
-        a1 = (double**)malloc(n * sizeof(double*));
+    printf("Creating and initializing matrices...\n");
+    /*** Allocate contiguous memory for 2D matrices ***/
+    a = (double**)calloc(n, sizeof(double*));
+    a1 = (double**)calloc(n, sizeof(double*));
 
-        double* a0 = (double*)malloc(n * (n + b * numprocs) * sizeof(double));
-        double* a10 = (double*)malloc(n * n * sizeof(double));
+    double* a0 = (double*)calloc(n * (n + b * numprocs), sizeof(double));
+    double* a10 = (double*)calloc(n * n, sizeof(double));
 
-        for (i = 0; i < n; i++) {
-            a[i] = a0 + i * (n + b * numprocs);
-            a1[i] = a10 + i * n;
-        }
-        printf("Done!\n\n");
+    for (i = 0; i < n; i++) {
+        a[i] = a0 + i * (n + b * numprocs);
+        a1[i] = a10 + i * n;
+    }
+    printf("Done!\n\n");
 
-        srand(time(0));
-        for (i = 0; i < n; i++) {
-            for (j = 0; j < n; j++) {
-                a1[i][j] = a[i][j] = (double)rand() / RAND_MAX;
-            }
+    srand(time(0));
+    for (i = 0; i < n; i++) {
+        for (j = 0; j < n; j++) {
+            a1[i][j] = a[i][j] = (double)rand() / RAND_MAX;
         }
     }
 
@@ -115,16 +113,15 @@ int main(int argc, char* argv[]) {
                    ((BLOCK_NUMS - (n % b != 0)) % numprocs > rank ? b : 0) +
                    ((BLOCK_NUMS - (n % b != 0)) % numprocs == rank ? n % b : 0);
 
-
-    double** process = (double**)malloc(n * sizeof(double*));
-    double* process0 = (double*)malloc(GROUP_NUMS * b * n * sizeof(double));
+    double** process = (double**)calloc(n, sizeof(double*));
+    double* process0 = (double*)calloc(GROUP_NUMS * b * n, sizeof(double));
 
     for (i = 0; i < n; i++) {
         process[i] = process0 + i * GROUP_NUMS * b;
     }
 
     // spread data
-    MPI_Request* request = (MPI_Request*)malloc(GROUP_NUMS * sizeof(MPI_Request));
+    MPI_Request* request = (MPI_Request*)calloc(GROUP_NUMS, sizeof(MPI_Request));
 
     for (i = 0; i < GROUP_NUMS; i++) {
         MPI_Iscatter(a[0] + i * b * numprocs, b, col_t, process[0] + i * b, b, process_col_t, 0, MPI_COMM_WORLD,
@@ -138,19 +135,19 @@ int main(int argc, char* argv[]) {
     int END, BEGIN, PROCESS_BEGIN, PROCESS_END, LL_RIGHT_BEGIN, CUR_RANK;
     double* c;
     double c0;
-    int* change_sequence = (int*)malloc(b * sizeof(int));
-	int* disps_ll = (int*)malloc(b * sizeof(int));
-	int* blocklens_ll = (int*)malloc(b * sizeof(int));
+    int* change_sequence = (int*)calloc(b, sizeof(int));
+    int* disps_ll = (int*)calloc(b, sizeof(int));
+    int* blocklens_ll = (int*)calloc(b, sizeof(int));
 
-    double** left_matrix = (double**)malloc(n * sizeof(double));
-    double* left0 = (double*)malloc(n * b * sizeof(double));
+    double** left_matrix = (double**)calloc(n, sizeof(double));
+    double* left0 = (double*)calloc(n * b, sizeof(double));
 
     for (i = 0; i < n; i++) {
         left_matrix[i] = left0 + i * b;
     }
 
-    double** LL_matrix = (double**)malloc(b * sizeof(double*));
-    double* LL0 = (double*)malloc(b * b * sizeof(double));
+    double** LL_matrix = (double**)calloc(b, sizeof(double*));
+    double* LL0 = (double*)calloc(b * b, sizeof(double));
 
     for (i = 0; i < b; i++) {
         LL_matrix[i] = LL0 + i * b;
@@ -181,7 +178,7 @@ int main(int argc, char* argv[]) {
                 // exit with a warning that a is singular
                 if (amax == 0) {
                     printf("Rank %d: matrix is singular!\n", rank);
-                    exit(1);
+                    // exit(1);
                 } else if (idx != i) {
                     // swap row i and row k
                     for (j = 0; j < COL_NUMS; j++) {
