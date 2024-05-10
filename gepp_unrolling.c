@@ -14,8 +14,8 @@ int main(int argc, char* argv[]) {
     double** a1;
 
     int i, j;
-    int n;  // input size
-    int b;  // block size
+    int n;            // input size
+    const int b = 8;  // block size
 
     struct timeval start_time, end_time;
     long seconds, microseconds;
@@ -29,12 +29,11 @@ int main(int argc, char* argv[]) {
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
 
     if (rank == 0) {
-        if (argc == 3) {
+        if (argc == 2) {
             n = atoi(argv[1]);
-            b = atoi(argv[2]);
             printf("The matrix size: %d * %d\n", n, n);
             printf("The block size: %d\n", b);
-			printf("The number of processes: %d\n\n", numprocs);
+            printf("The number of processes: %d\n\n", numprocs);
         } else {
             printf(
                 "Usage: %s n b\n"
@@ -46,28 +45,22 @@ int main(int argc, char* argv[]) {
     }
 
     n = atoi(argv[1]);
-    b = atoi(argv[2]);
 
-    if (rank == 0) {
-        printf("Creating and initializing matrices...\n");
-        /*** Allocate contiguous memory for 2D matrices ***/
-        a = (double**)malloc(n * sizeof(double*));
-        a1 = (double**)malloc(n * sizeof(double*));
+    a = (double**)calloc(n, sizeof(double*));
+    a1 = (double**)calloc(n, sizeof(double*));
 
-        double* a0 = (double*)malloc(n * (n + b * numprocs) * sizeof(double));
-        double* a10 = (double*)malloc(n * n * sizeof(double));
+    double* a0 = (double*)calloc(n * (n + b * numprocs), sizeof(double));
+    double* a10 = (double*)calloc(n * n, sizeof(double));
 
-        for (i = 0; i < n; i++) {
-            a[i] = a0 + i * (n + b * numprocs);
-            a1[i] = a10 + i * n;
-        }
-        printf("Done!\n\n");
+    for (i = 0; i < n; i++) {
+        a[i] = a0 + i * (n + b * numprocs);
+        a1[i] = a10 + i * n;
+    }
 
-        srand(time(0));
-        for (i = 0; i < n; i++) {
-            for (j = 0; j < n; j++) {
-                a1[i][j] = a[i][j] = (double)rand() / RAND_MAX;
-            }
+    srand(time(0));
+    for (i = 0; i < n; i++) {
+        for (j = 0; j < n; j++) {
+            a1[i][j] = a[i][j] = (double)rand() / RAND_MAX;
         }
     }
 
@@ -115,16 +108,15 @@ int main(int argc, char* argv[]) {
                    ((BLOCK_NUMS - (n % b != 0)) % numprocs > rank ? b : 0) +
                    ((BLOCK_NUMS - (n % b != 0)) % numprocs == rank ? n % b : 0);
 
-
-    double** process = (double**)malloc(n * sizeof(double*));
-    double* process0 = (double*)malloc(GROUP_NUMS * b * n * sizeof(double));
+    double** process = (double**)calloc(n, sizeof(double*));
+    double* process0 = (double*)calloc(GROUP_NUMS * b * n, sizeof(double));
 
     for (i = 0; i < n; i++) {
         process[i] = process0 + i * GROUP_NUMS * b;
     }
 
     // spread data
-    MPI_Request* request = (MPI_Request*)malloc(GROUP_NUMS * sizeof(MPI_Request));
+    MPI_Request* request = (MPI_Request*)calloc(GROUP_NUMS, sizeof(MPI_Request));
 
     for (i = 0; i < GROUP_NUMS; i++) {
         MPI_Iscatter(a[0] + i * b * numprocs, b, col_t, process[0] + i * b, b, process_col_t, 0, MPI_COMM_WORLD,
@@ -133,24 +125,26 @@ int main(int argc, char* argv[]) {
 
     MPI_Waitall(GROUP_NUMS, request, MPI_STATUSES_IGNORE);
 
+    double t0, t1, t2, t3;
+    double l0, l1, l2, l3;
     double amax, cur, top, left;
     int idx, k, col;
     int END, BEGIN, PROCESS_BEGIN, PROCESS_END, LL_RIGHT_BEGIN, CUR_RANK;
     double* c;
     double c0;
-    int* change_sequence = (int*)malloc(b * sizeof(int));
-	int* disps_ll = (int*)malloc(b * sizeof(int));
-	int* blocklens_ll = (int*)malloc(b * sizeof(int));
+    int* change_sequence = (int*)calloc(b, sizeof(int));
+    int* disps_ll = (int*)calloc(b, sizeof(int));
+    int* blocklens_ll = (int*)calloc(b, sizeof(int));
 
-    double** left_matrix = (double**)malloc(n * sizeof(double));
-    double* left0 = (double*)malloc(n * b * sizeof(double));
+    double** left_matrix = (double**)calloc(n, sizeof(double));
+    double* left0 = (double*)calloc(n * b, sizeof(double));
 
     for (i = 0; i < n; i++) {
         left_matrix[i] = left0 + i * b;
     }
 
-    double** LL_matrix = (double**)malloc(b * sizeof(double*));
-    double* LL0 = (double*)malloc(b * b * sizeof(double));
+    double** LL_matrix = (double**)calloc(b, sizeof(double*));
+    double* LL0 = (double*)calloc(b * b, sizeof(double));
 
     for (i = 0; i < b; i++) {
         LL_matrix[i] = LL0 + i * b;
@@ -201,10 +195,74 @@ int main(int argc, char* argv[]) {
                 }
 
                 // subtract multiple of row a(i,:) to zero out a(j,i)
-                for (k = i + 1; k < END; k++) {
-                    top = process[i][PROCESS_BEGIN + k - ib];
-                    for (j = i + 1; j < n; j++) {
-                        process[j][PROCESS_BEGIN + k - ib] -= top * process[j][col];
+                if (END - i > 4) {
+                    t0 = process[i][PROCESS_BEGIN + i - BEGIN + 1];
+                    t1 = process[i][PROCESS_BEGIN + i - BEGIN + 2];
+                    t2 = process[i][PROCESS_BEGIN + i - BEGIN + 3];
+                    t3 = process[i][PROCESS_BEGIN + i - BEGIN + 4];
+
+                    for (j = i + 1; j < n - 4; j += 4) {
+                        l0 = process[j][col];
+                        l1 = process[j + 1][col];
+                        l2 = process[j + 2][col];
+                        l3 = process[j + 3][col];
+
+                        process[j][PROCESS_BEGIN + i - BEGIN + 1] -= t0 * l0;
+                        process[j][PROCESS_BEGIN + i - BEGIN + 2] -= t1 * l0;
+                        process[j][PROCESS_BEGIN + i - BEGIN + 3] -= t2 * l0;
+                        process[j][PROCESS_BEGIN + i - BEGIN + 4] -= t3 * l0;
+
+                        process[j + 1][PROCESS_BEGIN + i - BEGIN + 1] -= t0 * l1;
+                        process[j + 1][PROCESS_BEGIN + i - BEGIN + 2] -= t1 * l1;
+                        process[j + 1][PROCESS_BEGIN + i - BEGIN + 3] -= t2 * l1;
+                        process[j + 1][PROCESS_BEGIN + i - BEGIN + 4] -= t3 * l1;
+
+                        process[j + 2][PROCESS_BEGIN + i - BEGIN + 1] -= t0 * l2;
+                        process[j + 2][PROCESS_BEGIN + i - BEGIN + 2] -= t1 * l2;
+                        process[j + 2][PROCESS_BEGIN + i - BEGIN + 3] -= t2 * l2;
+                        process[j + 2][PROCESS_BEGIN + i - BEGIN + 4] -= t3 * l2;
+
+                        process[j + 3][PROCESS_BEGIN + i - BEGIN + 1] -= t0 * l3;
+                        process[j + 3][PROCESS_BEGIN + i - BEGIN + 2] -= t1 * l3;
+                        process[j + 3][PROCESS_BEGIN + i - BEGIN + 3] -= t2 * l3;
+                        process[j + 3][PROCESS_BEGIN + i - BEGIN + 4] -= t3 * l3;
+                    }
+
+                    for (; j < n; j++) {
+                        l0 = process[j][col];
+
+                        process[j][PROCESS_BEGIN + i - BEGIN + 1] -= t0 * l0;
+                        process[j][PROCESS_BEGIN + i - BEGIN + 2] -= t1 * l0;
+                        process[j][PROCESS_BEGIN + i - BEGIN + 3] -= t2 * l0;
+                        process[j][PROCESS_BEGIN + i - BEGIN + 4] -= t3 * l0;
+                    }
+
+                    for (k = i + 5; k < END; k++) {
+                        top = process[i][PROCESS_BEGIN + k - BEGIN];
+                        for (j = i + 1; j < n - 4; j += 4) {
+                            process[j][PROCESS_BEGIN + k - BEGIN] -= top * process[j][col];
+                            process[j + 1][PROCESS_BEGIN + k - BEGIN] -= top * process[j + 1][col];
+                            process[j + 2][PROCESS_BEGIN + k - BEGIN] -= top * process[j + 2][col];
+                            process[j + 3][PROCESS_BEGIN + k - BEGIN] -= top * process[j + 3][col];
+                        }
+
+                        for (; j < n; j++) {
+                            process[j][PROCESS_BEGIN + k - BEGIN] -= top * process[j][col];
+                        }
+                    }
+                } else {
+                    for (k = i + 1; k < END; k++) {
+                        top = process[i][PROCESS_BEGIN + k - BEGIN];
+                        for (j = i + 1; j < n - 4; j += 4) {
+                            process[j][PROCESS_BEGIN + k - BEGIN] -= top * process[j][col];
+                            process[j + 1][PROCESS_BEGIN + k - BEGIN] -= top * process[j + 1][col];
+                            process[j + 2][PROCESS_BEGIN + k - BEGIN] -= top * process[j + 2][col];
+                            process[j + 3][PROCESS_BEGIN + k - BEGIN] -= top * process[j + 3][col];
+                        }
+
+                        for (; j < n; j++) {
+                            process[j][PROCESS_BEGIN + k - BEGIN] -= top * process[j][col];
+                        }
                     }
                 }
             }
@@ -257,6 +315,7 @@ int main(int argc, char* argv[]) {
         for (i = 0; i < b; i++) {
             for (j = ib + i + 1; j < END; j++) {
                 left = LL_matrix[j - ib][i];
+
                 for (k = LL_RIGHT_BEGIN; k < COL_NUMS; k++) {
                     process[j][k] -= left * process[ib + i][k];
                 }
