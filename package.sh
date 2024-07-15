@@ -1,3 +1,3 @@
 #!/bin/bash
 
-tar -cvf gepp.tar gepp.c gepp_omp.c makefile test_omp.sh test.sh README.md AI_Form.docx
+tar -cvf gepp.tar gepp.c gepp_unrolling.c makefile README.md AI_Form.docx
